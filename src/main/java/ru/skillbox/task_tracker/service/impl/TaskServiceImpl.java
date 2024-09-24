@@ -3,11 +3,13 @@ package ru.skillbox.task_tracker.service.impl;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import ru.skillbox.task_tracker.entity.Task;
+import ru.skillbox.task_tracker.entity.TaskStatus;
 import ru.skillbox.task_tracker.entity.User;
 import ru.skillbox.task_tracker.exception.EntityNotFoundException;
 import ru.skillbox.task_tracker.mapper.TaskMapper;
@@ -18,9 +20,12 @@ import ru.skillbox.task_tracker.service.TaskService;
 import ru.skillbox.task_tracker.service.UserService;
 import ru.skillbox.task_tracker.web.model.TaskRequest;
 import ru.skillbox.task_tracker.web.model.TaskResponse;
+import ru.skillbox.task_tracker.web.model.TaskUpdateRequest;
 import ru.skillbox.task_tracker.web.model.UserResponse;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 
 
 @Service
@@ -74,9 +79,9 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public Mono<TaskResponse> create(TaskRequest taskRequest) {
-        return userRepository.findById(taskRequest.getAuthorId())
-                .switchIfEmpty(Mono.error(new EntityNotFoundException("Author not found with id: " + taskRequest.getAuthorId())))
+    public Mono<TaskResponse> create(TaskRequest taskRequest, UserDetails userDetails) {
+        return userRepository.findByUsername(userDetails.getUsername())
+                .switchIfEmpty(Mono.error(new EntityNotFoundException("Author not found with username: " + userDetails.getUsername())))
                 .flatMap(author ->
                         userRepository.findById(taskRequest.getAssigneeId())
                                 .switchIfEmpty(Mono.error(new EntityNotFoundException("Assignee not found with id: " + taskRequest.getAssigneeId())))
@@ -85,17 +90,28 @@ public class TaskServiceImpl implements TaskService {
                                     Task task = taskMapper.toEntity(taskRequest);
                                     task.setCreatedAt(Instant.now());
                                     task.setUpdatedAt(Instant.now());
+                                    task.setAuthorId(author.getId());
+                                    task.setAssigneeId(taskRequest.getAssigneeId());
+                                    if (taskRequest.getObserverIds() != null) {
+                                        task.setObserverIds(taskRequest.getObserverIds());
+                                    } else {
+                                        task.setObserverIds(new HashSet<>());
+                                    }
+                                    if (task.getStatus() == null) {
+                                        task.setStatus(TaskStatus.TODO);
+                                    }
+
 
                                     // Сохранение задачи
                                     return taskRepository.save(task)
-                                            .flatMap(savedTask -> findById(savedTask.getId()));
+                                            .flatMap(savedTask -> findById(savedTask.getId())); // Убедитесь, что этот метод работает
                                 })
                 );
     }
 
 
     @Override
-    public Mono<TaskResponse> update(String id, TaskRequest taskRequest) {
+    public Mono<TaskResponse> update(String id, TaskUpdateRequest taskRequest) {
         return taskRepository.findById(id)
                 .switchIfEmpty(Mono.error(new EntityNotFoundException("Task not found with id: " + id)))
                 .flatMap(existingTask -> {
@@ -132,8 +148,6 @@ public class TaskServiceImpl implements TaskService {
     }
 
 
-
-
     public void validateTask(Task task) {
         if (task.getAuthorId() == null) {
             throw new EntityNotFoundException("Author ID is missing");
@@ -147,18 +161,15 @@ public class TaskServiceImpl implements TaskService {
     }
 
     // Метод для обновления полей задачи
-    private Task updateTaskFields(Task existingTask, TaskRequest taskRequest) {
+    private Task updateTaskFields(Task existingTask, TaskUpdateRequest taskRequest) {
         Task updatedTask = new Task();
         updatedTask.setId(existingTask.getId()); // Устанавливаем существующий ID
-        updatedTask.setAuthorId(
-                taskRequest.getAuthorId() != null ? taskRequest.getAuthorId() : existingTask.getAuthorId());
-        updatedTask.setAssigneeId(
-                taskRequest.getAssigneeId() != null ? taskRequest.getAssigneeId() : existingTask.getAssigneeId());
-        updatedTask.setObserverIds(
-                taskRequest.getObserverIds() != null ? taskRequest.getObserverIds() : existingTask.getObserverIds());
+        updatedTask.setAuthorId(existingTask.getAuthorId());
+        updatedTask.setAssigneeId(taskRequest.getAssigneeId() != null ? taskRequest.getAssigneeId() : existingTask.getAssigneeId());
+        updatedTask.setObserverIds(taskRequest.getObserverIds() != null ? taskRequest.getObserverIds() : existingTask.getObserverIds());
         updatedTask.setName(taskRequest.getName() != null ? taskRequest.getName() : existingTask.getName());
-        updatedTask.setDescription(
-                taskRequest.getDescription() != null ? taskRequest.getDescription() : existingTask.getDescription());
+        updatedTask.setDescription(taskRequest.getDescription() != null ? taskRequest.getDescription() : existingTask.getDescription());
+        updatedTask.setCreatedAt(existingTask.getCreatedAt());
         updatedTask.setStatus(taskRequest.getStatus() != null ? taskRequest.getStatus() : existingTask.getStatus());
         return updatedTask;
     }

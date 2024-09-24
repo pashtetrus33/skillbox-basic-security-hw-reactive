@@ -6,5 +6,5 @@ import ru.skillbox.task_tracker.entity.User;
 
 public interface UserRepository extends ReactiveMongoRepository<User, String> {
 
-    Mono<User> findByName(String name);
+    Mono<User> findByUsername(String username);
 }

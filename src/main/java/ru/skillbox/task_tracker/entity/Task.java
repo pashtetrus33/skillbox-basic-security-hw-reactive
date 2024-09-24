@@ -1,6 +1,5 @@
 package ru.skillbox.task_tracker.entity;
 
-import jdk.jfr.Timestamp;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
